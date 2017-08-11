@@ -147,6 +147,9 @@ struct task_security_struct {
 #define current_selinux_ns \
 	(((struct task_security_struct *)current_security())->ns)
 
+#define cred_selinux_ns(cred) \
+	(((struct task_security_struct *)(cred)->security)->ns)
+
 #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
 static inline bool enforcing_enabled(struct selinux_ns *ns)
 {
