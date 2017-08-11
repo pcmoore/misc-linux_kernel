@@ -175,6 +175,8 @@ static inline u32 current_sid(void)
 
 #define current_selinux_ns (selinux_cred(current_cred())->ns)
 
+#define cred_selinux_ns(cred) (selinux_cred(cred)->ns)
+
 static inline bool selinux_initialized(const struct selinux_ns *ns)
 {
 	/* do a synchronized load to avoid race conditions */
