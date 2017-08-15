@@ -2772,16 +2772,17 @@ int security_genfs_sid(struct selinux_ns *ns,
 
 /**
  * security_fs_use - Determine how to handle labeling for a filesystem.
- * @sb: superblock in question
+ * @fstype: filesystem type
+ * @behavior: labeling behavior
+ * @sid: SID for filesystem (superblock)
  */
-int security_fs_use(struct selinux_ns *ns, struct super_block *sb)
+int security_fs_use(struct selinux_ns *ns, const char *fstype,
+		    unsigned short *behavior, u32 *sid)
 {
 	struct policydb *policydb;
 	struct sidtab *sidtab;
 	int rc = 0;
 	struct ocontext *c;
-	struct superblock_security_struct *sbsec = sb->s_security;
-	const char *fstype = sb->s_type->name;
 
 	read_lock(&ns->ss->policy_rwlock);
 
@@ -2796,22 +2797,22 @@ int security_fs_use(struct selinux_ns *ns, struct super_block *sb)
 	}
 
 	if (c) {
-		sbsec->behavior = c->v.behavior;
+		*behavior = c->v.behavior;
 		if (!c->sid[0]) {
 			rc = sidtab_context_to_sid(sidtab, &c->context[0],
 						   &c->sid[0]);
 			if (rc)
 				goto out;
 		}
-		sbsec->sid = c->sid[0];
+		*sid = c->sid[0];
 	} else {
 		rc = __security_genfs_sid(ns, fstype, "/", SECCLASS_DIR,
-					  &sbsec->sid);
+					  sid);
 		if (rc) {
-			sbsec->behavior = SECURITY_FS_USE_NONE;
+			*behavior = SECURITY_FS_USE_NONE;
 			rc = 0;
 		} else {
-			sbsec->behavior = SECURITY_FS_USE_GENFS;
+			*behavior = SECURITY_FS_USE_GENFS;
 		}
 	}
 

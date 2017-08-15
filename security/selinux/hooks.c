@@ -483,31 +483,88 @@ static void file_free_security(struct file *file)
 	kmem_cache_free(file_security_cache, fsec);
 }
 
-static int superblock_alloc_security(struct super_block *sb)
+static struct superblock_security_struct *sbsec_alloc(
+	const struct super_block *sb)
 {
 	struct superblock_security_struct *sbsec;
 
-	sbsec = kzalloc(sizeof(struct superblock_security_struct), GFP_KERNEL);
+	sbsec = kzalloc(sizeof(struct superblock_security_struct), GFP_NOFS);
 	if (!sbsec)
-		return -ENOMEM;
+		return NULL;
 
 	mutex_init(&sbsec->lock);
 	INIT_LIST_HEAD(&sbsec->isec_head);
 	spin_lock_init(&sbsec->isec_lock);
-	sbsec->sb = sb;
 	sbsec->sid = SECINITSID_UNLABELED;
 	sbsec->def_sid = SECINITSID_FILE;
 	sbsec->mntpoint_sid = SECINITSID_UNLABELED;
-	sb->s_security = sbsec;
+	sbsec->sb = sb;
+	sbsec->ns = get_selinux_ns(current_selinux_ns);
+	INIT_LIST_HEAD(&sbsec->sbsec_list);
+	return sbsec;
+}
 
+static int superblock_alloc_security(struct super_block *sb)
+{
+	struct superblock_security_struct *sbsec = sbsec_alloc(sb);
+
+	if (!sbsec)
+		return -ENOMEM;
+
+	sb->s_security = sbsec;
 	return 0;
 }
 
 static void superblock_free_security(struct super_block *sb)
 {
-	struct superblock_security_struct *sbsec = sb->s_security;
+	struct superblock_security_struct *sbsec = sb->s_security, *entry, *tmp;
 	sb->s_security = NULL;
+	put_selinux_ns(sbsec->ns);
+	list_for_each_entry_safe(entry, tmp, &sbsec->sbsec_list, sbsec_list) {
+		put_selinux_ns(entry->ns);
+		kfree(entry);
+	}
 	kfree(sbsec);
+}
+
+static struct superblock_security_struct *superblock_security(
+	const struct super_block *sb)
+{
+	struct superblock_security_struct *sbsec = sb->s_security;
+	struct superblock_security_struct *cur, *new;
+
+	if (sbsec->ns == current_selinux_ns)
+		return sbsec;
+
+	spin_lock(&sbsec->sbsec_list_lock);
+
+	list_for_each_entry(cur, &sbsec->sbsec_list, sbsec_list) {
+		if (cur->ns == current_selinux_ns)
+			goto out;
+	}
+
+	spin_unlock(&sbsec->sbsec_list_lock);
+
+	new = sbsec_alloc(sb);
+	if (!new) {
+		cur = NULL;
+		goto out;
+	}
+
+	spin_lock(&sbsec->sbsec_list_lock);
+
+	list_for_each_entry(cur, &sbsec->sbsec_list, sbsec_list) {
+		if (cur->ns == current_selinux_ns) {
+			kfree(new);
+			goto out;
+		}
+	}
+
+	list_add(&new->sbsec_list, &sbsec->sbsec_list);
+	cur = new;
+out:
+	spin_unlock(&sbsec->sbsec_list_lock);
+	return cur;
 }
 
 static inline int inode_doinit(struct inode *inode)
@@ -577,7 +634,7 @@ static int may_context_mount_inode_relabel(u32 sid,
 
 static int selinux_is_sblabel_mnt(struct super_block *sb)
 {
-	struct superblock_security_struct *sbsec = sb->s_security;
+	struct superblock_security_struct *sbsec = superblock_security(sb);
 
 	return sbsec->behavior == SECURITY_FS_USE_XATTR ||
 		sbsec->behavior == SECURITY_FS_USE_TRANS ||
@@ -596,7 +653,7 @@ static int selinux_is_sblabel_mnt(struct super_block *sb)
 
 static int sb_finish_set_opts(struct super_block *sb)
 {
-	struct superblock_security_struct *sbsec = sb->s_security;
+	struct superblock_security_struct *sbsec = superblock_security(sb);
 	struct dentry *root = sb->s_root;
 	struct inode *root_inode = d_backing_inode(root);
 	int rc = 0;
@@ -680,7 +737,7 @@ static int selinux_get_mnt_opts(const struct super_block *sb,
 				struct security_mnt_opts *opts)
 {
 	int rc = 0, i;
-	struct superblock_security_struct *sbsec = sb->s_security;
+	struct superblock_security_struct *sbsec = superblock_security(sb);
 	char *context = NULL;
 	u32 len;
 	char tmp;
@@ -801,7 +858,7 @@ static int selinux_set_mnt_opts(struct super_block *sb,
 {
 	const struct cred *cred = current_cred();
 	int rc = 0, i;
-	struct superblock_security_struct *sbsec = sb->s_security;
+	struct superblock_security_struct *sbsec = superblock_security(sb);
 	const char *name = sb->s_type->name;
 	struct dentry *root = sbsec->sb->s_root;
 	struct inode_security_struct *root_isec;
@@ -937,7 +994,8 @@ static int selinux_set_mnt_opts(struct super_block *sb,
 		 * Determine the labeling behavior to use for this
 		 * filesystem type.
 		 */
-		rc = security_fs_use(current_selinux_ns, sb);
+		rc = security_fs_use(current_selinux_ns, sb->s_type->name,
+				     &sbsec->behavior, &sbsec->sid);
 		if (rc) {
 			pr_warn("%s: security_fs_use(%s) returned %d\n",
 					__func__, sb->s_type->name, rc);
@@ -1055,8 +1113,8 @@ out_double_mount:
 static int selinux_cmp_sb_context(const struct super_block *oldsb,
 				    const struct super_block *newsb)
 {
-	struct superblock_security_struct *old = oldsb->s_security;
-	struct superblock_security_struct *new = newsb->s_security;
+	struct superblock_security_struct *old = superblock_security(oldsb);
+	struct superblock_security_struct *new = superblock_security(newsb);
 	char oldflags = old->flags & SE_MNTMASK;
 	char newflags = new->flags & SE_MNTMASK;
 
@@ -1088,8 +1146,10 @@ static int selinux_sb_clone_mnt_opts(const struct super_block *oldsb,
 					unsigned long *set_kern_flags)
 {
 	int rc = 0;
-	const struct superblock_security_struct *oldsbsec = oldsb->s_security;
-	struct superblock_security_struct *newsbsec = newsb->s_security;
+	const struct superblock_security_struct *oldsbsec =
+		superblock_security(oldsb);
+	struct superblock_security_struct *newsbsec =
+		superblock_security(newsb);
 
 	int set_fscontext =	(oldsbsec->flags & FSCONTEXT_MNT);
 	int set_context =	(oldsbsec->flags & CONTEXT_MNT);
@@ -1126,7 +1186,8 @@ static int selinux_sb_clone_mnt_opts(const struct super_block *oldsb,
 
 	if (newsbsec->behavior == SECURITY_FS_USE_NATIVE &&
 		!(kern_flags & SECURITY_LSM_NATIVE_LABELS) && !set_context) {
-		rc = security_fs_use(current_selinux_ns, newsb);
+		rc = security_fs_use(current_selinux_ns, newsb->s_type->name,
+				     &newsbsec->behavior, &newsbsec->sid);
 		if (rc)
 			goto out;
 	}
@@ -1614,6 +1675,8 @@ static int inode_doinit_with_dentry(struct inode *inode,
 	if (isec->initialized == LABEL_INITIALIZED)
 		return 0;
 
+	sbsec = superblock_security(inode->i_sb);
+
 	spin_lock(&isec->lock);
 	if (isec->initialized == LABEL_INITIALIZED)
 		goto out_unlock;
@@ -1621,7 +1684,6 @@ static int inode_doinit_with_dentry(struct inode *inode,
 	if (isec->sclass == SECCLASS_FILE)
 		isec->sclass = inode_mode_to_security_class(inode->i_mode);
 
-	sbsec = inode->i_sb->s_security;
 	if (!current_selinux_ns->initialized ||
 	    !(sbsec->flags & SE_SBINITIALIZED)) {
 		/* Defer initialization until selinux_complete_init,
@@ -2012,7 +2074,8 @@ selinux_determine_inode_label(const struct task_security_struct *tsec,
 				 const struct qstr *name, u16 tclass,
 				 u32 *_new_isid)
 {
-	const struct superblock_security_struct *sbsec = dir->i_sb->s_security;
+	const struct superblock_security_struct *sbsec =
+		superblock_security(dir->i_sb);
 
 	if ((sbsec->flags & SE_SBINITIALIZED) &&
 	    (sbsec->behavior == SECURITY_FS_USE_MNTPOINT)) {
@@ -2043,7 +2106,7 @@ static int may_create(struct inode *dir,
 	int rc;
 
 	dsec = inode_security(dir);
-	sbsec = dir->i_sb->s_security;
+	sbsec = superblock_security(dir->i_sb);
 
 	sid = tsec->sid;
 
@@ -2192,7 +2255,7 @@ static int superblock_has_perm(const struct cred *cred,
 	struct superblock_security_struct *sbsec;
 	u32 sid = cred_sid(cred);
 
-	sbsec = sb->s_security;
+	sbsec = superblock_security(sb);
 	return avc_has_perm(cred_selinux_ns(cred),
 			    sid, sbsec->sid, SECCLASS_FILESYSTEM, perms, ad);
 }
@@ -2924,7 +2987,7 @@ static int selinux_sb_remount(struct super_block *sb, void *data)
 	int rc, i, *flags;
 	struct security_mnt_opts opts;
 	char *secdata, **mount_options;
-	struct superblock_security_struct *sbsec = sb->s_security;
+	struct superblock_security_struct *sbsec = superblock_security(sb);
 
 	if (!(sbsec->flags & SE_SBINITIALIZED))
 		return 0;
@@ -3118,7 +3181,7 @@ static int selinux_inode_init_security(struct inode *inode, struct inode *dir,
 	int rc;
 	char *context;
 
-	sbsec = dir->i_sb->s_security;
+	sbsec = superblock_security(dir->i_sb);
 
 	newsid = tsec->create_sid;
 
@@ -3356,7 +3419,7 @@ static int selinux_inode_setxattr(struct dentry *dentry, const char *name,
 		return dentry_has_perm(current_cred(), dentry, FILE__SETATTR);
 	}
 
-	sbsec = inode->i_sb->s_security;
+	sbsec = superblock_security(inode->i_sb);
 	if (!(sbsec->flags & SBLABEL_MNT))
 		return -EOPNOTSUPP;
 

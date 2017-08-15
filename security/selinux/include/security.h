@@ -362,7 +362,8 @@ int security_get_allow_unknown(struct selinux_ns *ns);
 #define SECURITY_FS_USE_NATIVE		7 /* use native label support */
 #define SECURITY_FS_USE_MAX		7 /* Highest SECURITY_FS_USE_XXX */
 
-int security_fs_use(struct selinux_ns *ns, struct super_block *sb);
+int security_fs_use(struct selinux_ns *ns,
+		    const char *fstype, unsigned short *behavior, u32 *sid);
 
 int security_genfs_sid(struct selinux_ns *ns,
 		       const char *fstype, char *name, u16 sclass,
