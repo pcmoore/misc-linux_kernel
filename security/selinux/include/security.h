@@ -15,6 +15,8 @@
 #include <linux/types.h>
 #include <linux/refcount.h>
 #include <linux/workqueue.h>
+#include <linux/cred.h>
+#include <linux/lsm_hooks.h>
 #include "flask.h"
 
 #define SECSID_NULL			0x00000000 /* unspecified SID */
@@ -143,7 +145,35 @@ static inline struct selinux_ns *get_selinux_ns(struct selinux_ns *ns)
 	return ns;
 }
 
-extern struct selinux_ns *current_selinux_ns;
+struct task_security_struct {
+	u32 osid;		/* SID prior to last execve */
+	u32 sid;		/* current SID */
+	u32 exec_sid;		/* exec SID */
+	u32 create_sid;		/* fscreate SID */
+	u32 keycreate_sid;	/* keycreate SID */
+	u32 sockcreate_sid;	/* fscreate SID */
+	struct selinux_ns *ns;  /* selinux namespace */
+	const struct cred *parent_cred; /* cred in parent ns */
+} __randomize_layout;
+
+extern struct lsm_blob_sizes selinux_blob_sizes;
+
+static inline struct task_security_struct *selinux_cred(const struct cred *cred)
+{
+	return cred->security + selinux_blob_sizes.lbs_cred;
+}
+
+/*
+ * get the subjective security ID of the current task
+ */
+static inline u32 current_sid(void)
+{
+	const struct task_security_struct *tsec = selinux_cred(current_cred());
+
+	return tsec->sid;
+}
+
+#define current_selinux_ns (selinux_cred(current_cred())->ns)
 
 static inline bool selinux_initialized(const struct selinux_ns *ns)
 {

@@ -106,7 +106,6 @@
 static struct lock_class_key selinux_ns_class_key;
 
 static struct selinux_ns *init_selinux_ns __ro_after_init;
-struct selinux_ns *current_selinux_ns;
 
 /* SECMARK reference count */
 static atomic_t selinux_secmark_refcount = ATOMIC_INIT(0);
@@ -208,6 +207,8 @@ static int selinux_lsm_notifier_avc_callback(u32 event)
 	return 0;
 }
 
+static struct selinux_ns *init_selinux_ns  __ro_after_init;
+
 /*
  * initialise the security for the init task
  */
@@ -218,6 +219,7 @@ static void cred_init_security(void)
 
 	tsec = selinux_cred(cred);
 	tsec->osid = tsec->sid = SECINITSID_KERNEL;
+	tsec->ns = get_selinux_ns(init_selinux_ns);
 }
 
 /*
@@ -231,15 +233,35 @@ static inline u32 cred_sid(const struct cred *cred)
 	return tsec->sid;
 }
 
+static struct task_security_struct unlabeled_task_security = {
+	.osid = SECINITSID_UNLABELED,
+	.sid = SECINITSID_UNLABELED,
+};
+
+static const struct task_security_struct *task_security(
+	const struct task_struct *p)
+{
+	const struct task_security_struct *tsec;
+
+	tsec = selinux_cred(__task_cred(p));
+	while (tsec->ns != current_selinux_ns && tsec->parent_cred)
+		tsec = selinux_cred(tsec->parent_cred);
+	if (tsec->ns != current_selinux_ns)
+		return &unlabeled_task_security;
+	return tsec;
+}
+
 /*
  * get the objective security ID of a task
  */
 static inline u32 task_sid(const struct task_struct *task)
 {
+	const struct task_security_struct *tsec;
 	u32 sid;
 
 	rcu_read_lock();
-	sid = cred_sid(__task_cred(task));
+	tsec = task_security(task);
+	sid = tsec->sid;
 	rcu_read_unlock();
 	return sid;
 }
@@ -3880,6 +3902,18 @@ static int selinux_task_alloc(struct task_struct *task,
 }
 
 /*
+ * free/release any cred memory other than the blob itself
+ */
+static void selinux_cred_free(struct cred *cred)
+{
+	struct task_security_struct *tsec = selinux_cred(cred);
+
+	put_selinux_ns(tsec->ns);
+	if (tsec->parent_cred)
+		put_cred(tsec->parent_cred);
+}
+
+/*
  * prepare a new set of credentials for modification
  */
 static int selinux_cred_prepare(struct cred *new, const struct cred *old,
@@ -3889,6 +3923,9 @@ static int selinux_cred_prepare(struct cred *new, const struct cred *old,
 	struct task_security_struct *tsec = selinux_cred(new);
 
 	*tsec = *old_tsec;
+	tsec->ns = get_selinux_ns(old_tsec->ns);
+	if (old_tsec->parent_cred)
+		tsec->parent_cred = get_cred(old_tsec->parent_cred);
 	return 0;
 }
 
@@ -3901,6 +3938,9 @@ static void selinux_cred_transfer(struct cred *new, const struct cred *old)
 	struct task_security_struct *tsec = selinux_cred(new);
 
 	*tsec = *old_tsec;
+	tsec->ns = get_selinux_ns(old_tsec->ns);
+	if (old_tsec->parent_cred)
+		tsec->parent_cred = get_cred(old_tsec->parent_cred);
 }
 
 static void selinux_cred_getsecid(const struct cred *c, u32 *secid)
@@ -6260,7 +6300,7 @@ static int selinux_getprocattr(struct task_struct *p,
 	unsigned len;
 
 	rcu_read_lock();
-	__tsec = selinux_cred(__task_cred(p));
+	__tsec = task_security(p);
 
 	if (current != p) {
 		error = avc_has_perm(current_selinux_ns,
@@ -6974,6 +7014,7 @@ static struct security_hook_list selinux_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(file_open, selinux_file_open),
 
 	LSM_HOOK_INIT(task_alloc, selinux_task_alloc),
+	LSM_HOOK_INIT(cred_free, selinux_cred_free),
 	LSM_HOOK_INIT(cred_prepare, selinux_cred_prepare),
 	LSM_HOOK_INIT(cred_transfer, selinux_cred_transfer),
 	LSM_HOOK_INIT(cred_getsecid, selinux_cred_getsecid),
@@ -7225,7 +7266,6 @@ static __init int selinux_init(void)
 		panic("SELinux: Could not create initial namespace\n");
 	enforcing_set(init_selinux_ns, selinux_enforcing_boot);
 	init_selinux_ns->checkreqprot = selinux_checkreqprot_boot;
-	current_selinux_ns = init_selinux_ns;
 
 	/* Set the security state for the initial task. */
 	cred_init_security();
