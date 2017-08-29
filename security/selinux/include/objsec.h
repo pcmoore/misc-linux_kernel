@@ -56,6 +56,8 @@ struct inode_security_struct {
 	u16 sclass;		/* security class of this object */
 	unsigned char initialized;	/* initialization flag */
 	spinlock_t lock;
+	struct selinux_ns *ns;
+	struct list_head isec_list;
 };
 
 struct file_security_struct {
@@ -148,5 +150,7 @@ struct pkey_security_struct {
 struct bpf_security_struct {
 	u32 sid;  /*SID of bpf obj creater*/
 };
+
+struct inode_security_struct *inode_security(struct inode *inode);
 
 #endif /* _SELINUX_OBJSEC_H_ */
