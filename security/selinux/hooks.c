@@ -103,7 +103,7 @@
 #include "audit.h"
 #include "avc_ss.h"
 
-static struct selinux_ns *init_selinux_ns;
+static struct selinux_ns *init_selinux_ns __ro_after_init;
 struct selinux_ns *current_selinux_ns;
 
 /* SECMARK reference count */
