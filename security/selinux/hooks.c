@@ -7188,7 +7188,7 @@ void __put_selinux_ns(struct selinux_ns *ns)
 	schedule_work(&ns->work);
 }
 
-static struct selinux_ns *init_selinux_ns;
+static struct selinux_ns *init_selinux_ns  __ro_after_init;
 
 static __init int selinux_init(void)
 {
