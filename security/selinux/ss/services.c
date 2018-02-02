@@ -70,6 +70,9 @@
 #include "ebitmap.h"
 #include "audit.h"
 
+static struct lock_class_key selinux_ss_class_key;
+static struct lock_class_key selinux_status_class_key;
+
 /* Policy capability names */
 char *selinux_policycap_names[__POLICYDB_CAPABILITY_MAX] = {
 	"network_peer_controls",
@@ -88,7 +91,9 @@ int selinux_ss_create(struct selinux_ss **ss)
 	if (!newss)
 		return -ENOMEM;
 	rwlock_init(&newss->policy_rwlock);
+	lockdep_set_class(&newss->policy_rwlock, &selinux_ss_class_key);
 	mutex_init(&newss->status_lock);
+	lockdep_set_class(&newss->status_lock, &selinux_status_class_key);
 	*ss = newss;
 	return 0;
 }
