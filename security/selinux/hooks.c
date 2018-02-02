@@ -103,6 +103,8 @@
 #include "audit.h"
 #include "avc_ss.h"
 
+static struct lock_class_key selinux_ns_class_key;
+
 static struct selinux_ns *init_selinux_ns __ro_after_init;
 struct selinux_ns *current_selinux_ns;
 
@@ -7173,6 +7175,7 @@ int selinux_ns_create(struct selinux_ns *parent, struct selinux_ns **ns)
 	INIT_WORK(&newns->work, selinux_ns_free);
 
 	mutex_init(&newns->status_lock);
+	lockdep_set_class(&newns->status_lock, &selinux_ns_class_key);
 
 	rc = selinux_ss_create(&newns->ss);
 	if (rc)
