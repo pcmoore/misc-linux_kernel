@@ -80,13 +80,27 @@ char *selinux_policycap_names[__POLICYDB_CAPABILITY_MAX] = {
 	"nnp_nosuid_transition"
 };
 
-static struct selinux_ss selinux_ss;
-
-void selinux_ss_init(struct selinux_ss **ss)
+int selinux_ss_create(struct selinux_ss **ss)
 {
-	rwlock_init(&selinux_ss.policy_rwlock);
-	mutex_init(&selinux_ss.status_lock);
-	*ss = &selinux_ss;
+	struct selinux_ss *newss;
+
+	newss = kzalloc(sizeof(*newss), GFP_KERNEL);
+	if (!newss)
+		return -ENOMEM;
+	rwlock_init(&newss->policy_rwlock);
+	mutex_init(&newss->status_lock);
+	*ss = newss;
+	return 0;
+}
+
+void selinux_ss_free(struct selinux_ss *ss)
+{
+	sidtab_destroy(&ss->sidtab);
+	policydb_destroy(&ss->policydb);
+	kfree(ss->map.mapping);
+	if (ss->status_page)
+		__free_page(ss->status_page);
+	kfree(ss);
 }
 
 /* Forward declaration. */

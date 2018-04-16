@@ -91,7 +91,7 @@ static int selinux_fs_info_create(struct super_block *sb)
 
 	mutex_init(&fsi->mutex);
 	fsi->last_ino = SEL_INO_NEXT - 1;
-	fsi->ns = current_selinux_ns;
+	fsi->ns = get_selinux_ns(current_selinux_ns);
 	fsi->sb = sb;
 	sb->s_fs_info = fsi;
 	return 0;
@@ -103,6 +103,7 @@ static void selinux_fs_info_free(struct super_block *sb)
 	int i;
 
 	if (fsi) {
+		put_selinux_ns(fsi->ns);
 		for (i = 0; i < fsi->bool_num; i++)
 			kfree(fsi->bool_pending_names[i]);
 		kfree(fsi->bool_pending_names);

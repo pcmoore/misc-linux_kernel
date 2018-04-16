@@ -97,6 +97,8 @@ struct selinux_avc;
 struct selinux_ss;
 
 struct selinux_ns {
+	refcount_t count;
+	struct work_struct work;
 	bool disabled;
 #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
 	bool enforcing;
@@ -106,10 +108,29 @@ struct selinux_ns {
 	bool policycap[__POLICYDB_CAPABILITY_MAX];
 	struct selinux_avc *avc;
 	struct selinux_ss *ss;
+	struct selinux_ns *parent;
 };
 
-void selinux_ss_init(struct selinux_ss **ss);
-void selinux_avc_init(struct selinux_avc **avc);
+int selinux_ns_create(struct selinux_ns *parent, struct selinux_ns **ns);
+void __put_selinux_ns(struct selinux_ns *ns);
+
+int selinux_ss_create(struct selinux_ss **ss);
+void selinux_ss_free(struct selinux_ss *ss);
+
+int selinux_avc_create(struct selinux_avc **avc);
+void selinux_avc_free(struct selinux_avc *avc);
+
+static inline void put_selinux_ns(struct selinux_ns *ns)
+{
+	if (ns && refcount_dec_and_test(&ns->count))
+		__put_selinux_ns(ns);
+}
+
+static inline struct selinux_ns *get_selinux_ns(struct selinux_ns *ns)
+{
+	refcount_inc(&ns->count);
+	return ns;
+}
 
 extern struct selinux_ns *current_selinux_ns;
 
