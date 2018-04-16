@@ -2009,10 +2009,32 @@ err:
 	return ret;
 }
 
+static int selinuxfs_compare(struct super_block *sb, void *p)
+{
+	struct selinux_fs_info *fsi = sb->s_fs_info;
+
+	return (current_selinux_ns == fsi->ns);
+}
+
 static struct dentry *sel_mount(struct file_system_type *fs_type,
 		      int flags, const char *dev_name, void *data)
 {
-	return mount_single(fs_type, flags, data, sel_fill_super);
+	int (*fill_super)(struct super_block *, void *, int) = sel_fill_super;
+	struct super_block *s;
+	int error;
+
+	s = sget(fs_type, selinuxfs_compare, set_anon_super, flags, NULL);
+	if (IS_ERR(s))
+		return ERR_CAST(s);
+	if (!s->s_root) {
+		error = fill_super(s, data, flags & MS_SILENT ? 1 : 0);
+		if (error) {
+			deactivate_locked_super(s);
+			return ERR_PTR(error);
+		}
+		s->s_flags |= MS_ACTIVE;
+	}
+	return dget(s->s_root);
 }
 
 static void sel_kill_sb(struct super_block *sb)
