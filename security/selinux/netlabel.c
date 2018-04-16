@@ -59,7 +59,7 @@ static int selinux_netlbl_sidlookup_cached(struct sk_buff *skb,
 {
 	int rc;
 
-	rc = security_netlbl_secattr_to_sid(&selinux_state, secattr, sid);
+	rc = security_netlbl_secattr_to_sid(current_selinux_ns, secattr, sid);
 	if (rc == 0 &&
 	    (secattr->flags & NETLBL_SECATTR_CACHEABLE) &&
 	    (secattr->flags & NETLBL_SECATTR_CACHE))
@@ -90,7 +90,7 @@ static struct netlbl_lsm_secattr *selinux_netlbl_sock_genattr(struct sock *sk)
 	secattr = netlbl_secattr_alloc(GFP_ATOMIC);
 	if (secattr == NULL)
 		return NULL;
-	rc = security_netlbl_sid_to_secattr(&selinux_state, sksec->sid,
+	rc = security_netlbl_sid_to_secattr(current_selinux_ns, sksec->sid,
 					    secattr);
 	if (rc != 0) {
 		netlbl_secattr_free(secattr);
@@ -258,7 +258,7 @@ int selinux_netlbl_skbuff_setsid(struct sk_buff *skb,
 	if (secattr == NULL) {
 		secattr = &secattr_storage;
 		netlbl_secattr_init(secattr);
-		rc = security_netlbl_sid_to_secattr(&selinux_state, sid,
+		rc = security_netlbl_sid_to_secattr(current_selinux_ns, sid,
 						    secattr);
 		if (rc != 0)
 			goto skbuff_setsid_return;
@@ -299,7 +299,7 @@ int selinux_netlbl_sctp_assoc_request(struct sctp_endpoint *ep,
 		return 0;
 
 	netlbl_secattr_init(&secattr);
-	rc = security_netlbl_sid_to_secattr(&selinux_state,
+	rc = security_netlbl_sid_to_secattr(current_selinux_ns,
 					    ep->secid, &secattr);
 	if (rc != 0)
 		goto assoc_request_return;
@@ -348,7 +348,7 @@ int selinux_netlbl_inet_conn_request(struct request_sock *req, u16 family)
 		return 0;
 
 	netlbl_secattr_init(&secattr);
-	rc = security_netlbl_sid_to_secattr(&selinux_state, req->secid,
+	rc = security_netlbl_sid_to_secattr(current_selinux_ns, req->secid,
 					    &secattr);
 	if (rc != 0)
 		goto inet_conn_request_return;
@@ -478,7 +478,7 @@ int selinux_netlbl_sock_rcv_skb(struct sk_security_struct *sksec,
 		perm = RAWIP_SOCKET__RECVFROM;
 	}
 
-	rc = avc_has_perm(&selinux_state,
+	rc = avc_has_perm(current_selinux_ns,
 			  sksec->sid, nlbl_sid, sksec->sclass, perm, ad);
 	if (rc == 0)
 		return 0;

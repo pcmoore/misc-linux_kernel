@@ -162,7 +162,7 @@ static int sel_netif_sid_slow(struct net *ns, int ifindex, u32 *sid)
 		ret = -ENOMEM;
 		goto out;
 	}
-	ret = security_netif_sid(&selinux_state, dev->name, &new->nsec.sid);
+	ret = security_netif_sid(current_selinux_ns, dev->name, &new->nsec.sid);
 	if (ret != 0)
 		goto out;
 	new->nsec.ns = ns;

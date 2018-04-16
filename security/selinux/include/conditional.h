@@ -15,13 +15,13 @@
 
 #include "security.h"
 
-int security_get_bools(struct selinux_state *state,
+int security_get_bools(struct selinux_ns *ns,
 		       int *len, char ***names, int **values);
 
-int security_set_bools(struct selinux_state *state,
+int security_set_bools(struct selinux_ns *ns,
 		       int len, int *values);
 
-int security_get_bool_value(struct selinux_state *state,
+int security_get_bool_value(struct selinux_ns *ns,
 			    int index);
 
 #endif

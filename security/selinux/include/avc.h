@@ -52,7 +52,7 @@ struct selinux_audit_data {
 	u32 audited;
 	u32 denied;
 	int result;
-	struct selinux_state *state;
+	struct selinux_ns *ns;
 };
 
 /*
@@ -97,7 +97,7 @@ static inline u32 avc_audit_required(u32 requested,
 	return audited;
 }
 
-int slow_avc_audit(struct selinux_state *state,
+int slow_avc_audit(struct selinux_ns *ns,
 		   u32 ssid, u32 tsid, u16 tclass,
 		   u32 requested, u32 audited, u32 denied, int result,
 		   struct common_audit_data *a,
@@ -123,7 +123,7 @@ int slow_avc_audit(struct selinux_state *state,
  * be performed under a lock, to allow the lock to be released
  * before calling the auditing code.
  */
-static inline int avc_audit(struct selinux_state *state,
+static inline int avc_audit(struct selinux_ns *ns,
 			    u32 ssid, u32 tsid,
 			    u16 tclass, u32 requested,
 			    struct av_decision *avd,
@@ -135,35 +135,35 @@ static inline int avc_audit(struct selinux_state *state,
 	audited = avc_audit_required(requested, avd, result, 0, &denied);
 	if (likely(!audited))
 		return 0;
-	return slow_avc_audit(state, ssid, tsid, tclass,
+	return slow_avc_audit(ns, ssid, tsid, tclass,
 			      requested, audited, denied, result,
 			      a, flags);
 }
 
 #define AVC_STRICT 1 /* Ignore permissive mode. */
 #define AVC_EXTENDED_PERMS 2	/* update extended permissions */
-int avc_has_perm_noaudit(struct selinux_state *state,
+int avc_has_perm_noaudit(struct selinux_ns *ns,
 			 u32 ssid, u32 tsid,
 			 u16 tclass, u32 requested,
 			 unsigned flags,
 			 struct av_decision *avd);
 
-int avc_has_perm(struct selinux_state *state,
+int avc_has_perm(struct selinux_ns *ns,
 		 u32 ssid, u32 tsid,
 		 u16 tclass, u32 requested,
 		 struct common_audit_data *auditdata);
-int avc_has_perm_flags(struct selinux_state *state,
+int avc_has_perm_flags(struct selinux_ns *ns,
 		       u32 ssid, u32 tsid,
 		       u16 tclass, u32 requested,
 		       struct common_audit_data *auditdata,
 		       int flags);
 
-int avc_has_extended_perms(struct selinux_state *state,
+int avc_has_extended_perms(struct selinux_ns *ns,
 			   u32 ssid, u32 tsid, u16 tclass, u32 requested,
 			   u8 driver, u8 perm, struct common_audit_data *ad);
 
 
-u32 avc_policy_seqno(struct selinux_state *state);
+u32 avc_policy_seqno(struct selinux_ns *ns);
 
 #define AVC_CALLBACK_GRANT		1
 #define AVC_CALLBACK_TRY_REVOKE		2
