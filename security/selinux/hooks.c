@@ -103,7 +103,7 @@
 #include "audit.h"
 #include "avc_ss.h"
 
-static struct selinux_ns init_selinux_ns;
+static struct selinux_ns *init_selinux_ns;
 struct selinux_ns *current_selinux_ns;
 
 /* SECMARK reference count */
@@ -7158,17 +7158,71 @@ static struct security_hook_list selinux_hooks[] __lsm_ro_after_init = {
 #endif
 };
 
+static void selinux_ns_free(struct work_struct *work);
+
+int selinux_ns_create(struct selinux_ns *parent, struct selinux_ns **ns)
+{
+	struct selinux_ns *newns;
+	int rc;
+
+	newns = kzalloc(sizeof(*newns), GFP_KERNEL);
+	if (!newns)
+		return -ENOMEM;
+
+	refcount_set(&newns->count, 1);
+	INIT_WORK(&newns->work, selinux_ns_free);
+
+	mutex_init(&newns->status_lock);
+
+	rc = selinux_ss_create(&newns->ss);
+	if (rc)
+		goto err;
+
+	rc = selinux_avc_create(&newns->avc);
+	if (rc)
+		goto err;
+
+	if (parent)
+		newns->parent = get_selinux_ns(parent);
+
+	*ns = newns;
+	return 0;
+err:
+	selinux_ss_free(newns->ss);
+	kfree(newns);
+	return rc;
+}
+
+static void selinux_ns_free(struct work_struct *work)
+{
+	struct selinux_ns *parent, *ns =
+		container_of(work, struct selinux_ns, work);
+
+	do {
+		parent = ns->parent;
+		if (ns->status_page)
+			__free_page(ns->status_page);
+		selinux_ss_free(ns->ss);
+		selinux_avc_free(ns->avc);
+		kfree(ns);
+		ns = parent;
+	} while (ns && refcount_dec_and_test(&ns->count));
+}
+
+void __put_selinux_ns(struct selinux_ns *ns)
+{
+	schedule_work(&ns->work);
+}
+
 static __init int selinux_init(void)
 {
 	pr_info("SELinux:  Initializing.\n");
 
-	memset(&init_selinux_ns, 0, sizeof(init_selinux_ns));
-	enforcing_set(&init_selinux_ns, selinux_enforcing_boot);
-	init_selinux_ns.checkreqprot = selinux_checkreqprot_boot;
-	selinux_ss_init(&init_selinux_ns.ss);
-	selinux_avc_init(&init_selinux_ns.avc);
-	mutex_init(&init_selinux_ns.status_lock);
-	current_selinux_ns = &init_selinux_ns;
+	if (selinux_ns_create(NULL, &init_selinux_ns))
+		panic("SELinux: Could not create initial namespace\n");
+	enforcing_set(init_selinux_ns, selinux_enforcing_boot);
+	init_selinux_ns->checkreqprot = selinux_checkreqprot_boot;
+	current_selinux_ns = init_selinux_ns;
 
 	/* Set the security state for the initial task. */
 	cred_init_security();
@@ -7332,7 +7386,16 @@ int selinux_disable(struct selinux_ns *ns)
 		return -EINVAL;
 	}
 
+	/*
+	 * Disable of a non-init ns does not disable SELinux in the host.
+	 * We simply let the disable succeed, and init will then
+	 * unmount its selinuxfs instance and subsequent userspace
+	 * within the ns will interpret the absence of a selinuxfs mount
+	 * as SELinux being disabled.
+	 */
 	selinux_mark_disabled(ns);
+	if (ns != init_selinux_ns)
+		return 0;
 
 	pr_info("SELinux:  Disabled at runtime.\n");
 

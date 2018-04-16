@@ -76,12 +76,25 @@ const char *selinux_policycap_names[__POLICYDB_CAPABILITY_MAX] = {
 	"genfs_seclabel_symlinks"
 };
 
-static struct selinux_ss selinux_ss;
-
-void selinux_ss_init(struct selinux_ss **ss)
+int selinux_ss_create(struct selinux_ss **ss)
 {
-	rwlock_init(&selinux_ss.policy_rwlock);
-	*ss = &selinux_ss;
+	struct selinux_ss *newss;
+
+	newss = kzalloc(sizeof(*newss), GFP_KERNEL);
+	if (!newss)
+		return -ENOMEM;
+	rwlock_init(&newss->policy_rwlock);
+	*ss = newss;
+	return 0;
+}
+
+void selinux_ss_free(struct selinux_ss *ss)
+{
+	if (ss->sidtab)
+		sidtab_destroy(ss->sidtab);
+	policydb_destroy(&ss->policydb);
+	kfree(ss->map.mapping);
+	kfree(ss);
 }
 
 /* Forward declaration. */
