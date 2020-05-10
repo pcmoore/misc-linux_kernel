@@ -660,4 +660,7 @@ static inline void audit_log_string(struct audit_buffer *ab, const char *buf)
 	audit_log_n_string(ab, buf, strlen(buf));
 }
 
+/* TODO: temporary include */
+#include <linux/audit_field.h>
+
 #endif
