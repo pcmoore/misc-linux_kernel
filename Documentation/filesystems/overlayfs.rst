@@ -324,6 +324,15 @@ and
 The resulting access permissions should be the same.  The difference is in
 the time of copy (on-demand vs. up-front).
 
+Non overlapping credentials
+---------------------------
+
+TODO: Adapt the text from Mark and David's earlier posting, make sure to note
+the read-only restriction due to the limitations around the workdir and the
+changes to make the readdir cache credential aware when the creds are not
+overridden with the mounter's creds.
+
+TODO: https://lore.kernel.org/linux-security-module/20211117015806.2192263-4-dvander@google.com/#Z31Documentation:filesystems:overlayfs.rst
 
 Multiple lower layers
 ---------------------
