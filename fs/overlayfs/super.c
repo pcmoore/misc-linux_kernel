@@ -1036,11 +1036,10 @@ ovl_posix_acl_xattr_set(const struct xattr_handler *handler,
 		err = acl ? -EACCES : 0;
 		goto out_acl_release;
 	}
+	posix_acl_release(acl);
 	err = -EPERM;
 	if (!inode_owner_or_capable(&init_user_ns, inode))
-		goto out_acl_release;
-
-	posix_acl_release(acl);
+		return err;
 
 	/*
 	 * Check if sgid bit needs to be cleared (actual setacl operation will
