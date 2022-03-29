@@ -569,7 +569,7 @@ static int ovl_create_or_link(struct dentry *dentry, struct inode *inode,
 			      struct ovl_cattr *attr, bool origin)
 {
 	int err;
-	const struct cred *old_cred;
+	const struct cred *cred_a, *cred_b = NULL;
 	struct cred *override_cred;
 	struct dentry *parent = dentry->d_parent;
 
@@ -577,7 +577,7 @@ static int ovl_create_or_link(struct dentry *dentry, struct inode *inode,
 	if (err)
 		return err;
 
-	old_cred = ovl_override_creds(dentry->d_sb);
+	cred_a = ovl_override_creds(dentry->d_sb);
 
 	/*
 	 * When linking a file with copy up origin into a new parent, mark the
@@ -596,23 +596,23 @@ static int ovl_create_or_link(struct dentry *dentry, struct inode *inode,
 		override_cred->fsgid = inode->i_gid;
 		if (!attr->hardlink) {
 			err = security_dentry_create_files_as(dentry,
-					attr->mode, &dentry->d_name, old_cred,
+					attr->mode, &dentry->d_name, cred_a,
 					override_cred);
 			if (err) {
-				put_cred(override_cred);
+				abort_creds(override_cred);
 				goto out_revert_creds;
 			}
 		}
-		put_cred(override_creds(override_cred));
-		put_cred(override_cred);
 
+		cred_b = override_creds(override_cred);
 		if (!ovl_dentry_is_whiteout(dentry))
 			err = ovl_create_upper(dentry, inode, attr);
 		else
 			err = ovl_create_over_whiteout(dentry, inode, attr);
+		revert_creds(cred_b);
 	}
 out_revert_creds:
-	revert_creds(old_cred);
+	revert_creds(cred_a);
 	return err;
 }
 
