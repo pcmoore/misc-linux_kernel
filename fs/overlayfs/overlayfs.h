@@ -281,6 +281,7 @@ void ovl_drop_write(struct dentry *dentry);
 struct dentry *ovl_workdir(struct dentry *dentry);
 const struct cred *ovl_override_creds(struct super_block *sb);
 void ovl_revert_creds(const struct cred *old);
+int ovl_cred_fscmp(const struct cred *a, const struct cred *b);
 int ovl_can_decode_fh(struct super_block *sb);
 struct dentry *ovl_indexdir(struct super_block *sb);
 bool ovl_index_all(struct super_block *sb);
@@ -464,7 +465,7 @@ struct file *ovl_dir_real_file(const struct file *file, bool want_upper);
 int ovl_check_empty_dir(struct dentry *dentry, struct list_head *list);
 void ovl_cleanup_whiteouts(struct dentry *upper, struct list_head *list);
 void ovl_cache_free(struct list_head *list);
-void ovl_dir_cache_free(struct inode *inode);
+void ovl_dir_cache_free(struct ovl_dir_cache *cache);
 int ovl_check_d_type_supported(struct path *realpath);
 int ovl_workdir_cleanup(struct inode *dir, struct vfsmount *mnt,
 			struct dentry *dentry, int level);

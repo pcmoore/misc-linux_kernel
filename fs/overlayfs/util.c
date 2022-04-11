@@ -14,6 +14,7 @@
 #include <linux/uuid.h>
 #include <linux/namei.h>
 #include <linux/ratelimit.h>
+#include <linux/security.h>
 #include "overlayfs.h"
 
 int ovl_want_write(struct dentry *dentry)
@@ -47,6 +48,34 @@ void ovl_revert_creds(const struct cred *old)
 {
 	if (old != current->cred)
 		revert_creds(old);
+}
+
+int ovl_cred_fscmp(const struct cred *a, const struct cred *b)
+{
+	int rc;
+	u32 secid_a, secid_b;
+
+	rc = cred_fscmp(a, b);
+	if (rc)
+		return rc;
+
+	/*
+	 * We really can't read a lot into the secid comparison below
+	 * other than they are the same or not, anything else would require
+	 * diving back into the LSM for better analysis, but that could be
+	 * costly and we really only need to know if they are the same.  The
+	 * less-than, greater-than is just there to provide an "arbitrary,
+	 * but stable, ordering of credentials" (taken from the cred_fscmp()
+	 * description).
+	 */
+	security_cred_getsecid(a, &secid_a);
+	security_cred_getsecid(b, &secid_b);
+	if (secid_a < secid_b)
+		return -1;
+	else if (secid_a > secid_b)
+		return 1;
+
+	return 0;
 }
 
 /*

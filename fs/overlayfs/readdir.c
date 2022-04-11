@@ -31,6 +31,7 @@ struct ovl_cache_entry {
 struct ovl_dir_cache {
 	long refcount;
 	u64 version;
+	const struct cred *creds;
 	struct list_head entries;
 	struct rb_root root;
 };
@@ -225,12 +226,11 @@ void ovl_cache_free(struct list_head *list)
 	INIT_LIST_HEAD(list);
 }
 
-void ovl_dir_cache_free(struct inode *inode)
+void ovl_dir_cache_free(struct ovl_dir_cache *cache)
 {
-	struct ovl_dir_cache *cache = ovl_dir_cache(inode);
-
 	if (cache) {
 		ovl_cache_free(&cache->entries);
+		put_cred(cache->creds);
 		kfree(cache);
 	}
 }
@@ -242,9 +242,7 @@ static void ovl_cache_put(struct ovl_dir_cache *cache, struct dentry *dentry)
 	if (!cache->refcount) {
 		if (ovl_dir_cache(d_inode(dentry)) == cache)
 			ovl_set_dir_cache(d_inode(dentry), NULL);
-
-		ovl_cache_free(&cache->entries);
-		kfree(cache);
+		ovl_dir_cache_free(cache);
 	}
 }
 
@@ -388,6 +386,23 @@ static void ovl_seek_cursor(struct ovl_dir_file *od, loff_t pos)
 	od->cursor = p;
 }
 
+static const struct cred *ovl_cache_track_creds(const struct dentry *dentry)
+{
+	const struct ovl_fs *ofs = dentry->d_sb->s_fs_info;
+
+	if (!ofs->config.override_creds)
+		return get_cred(current_cred());
+	return NULL;
+}
+
+static bool ovl_cache_cred_ok(const struct ovl_dir_cache *cache)
+{
+	/* always match when not tracking creds, e.g. "override_creds=on" */
+	if (!cache->creds)
+		return true;
+	return !ovl_cred_fscmp(current_cred(), cache->creds);
+}
+
 static struct ovl_dir_cache *ovl_cache_get(struct dentry *dentry)
 {
 	int res;
@@ -413,11 +428,11 @@ static struct ovl_dir_cache *ovl_cache_get(struct dentry *dentry)
 
 	res = ovl_dir_read_merged(dentry, &cache->entries, &cache->root);
 	if (res) {
-		ovl_cache_free(&cache->entries);
-		kfree(cache);
+		ovl_dir_cache_free(cache);
 		return ERR_PTR(res);
 	}
 
+	cache->creds = ovl_cache_track_creds(dentry);
 	cache->version = ovl_dentry_version_get(dentry);
 	ovl_set_dir_cache(d_inode(dentry), cache);
 
@@ -600,12 +615,13 @@ static struct ovl_dir_cache *ovl_cache_get_impure(struct path *path)
 	struct ovl_dir_cache *cache;
 
 	cache = ovl_dir_cache(d_inode(dentry));
-	if (cache && ovl_dentry_version_get(dentry) == cache->version)
+	if (cache && ovl_dentry_version_get(dentry) == cache->version &&
+	    ovl_cache_cred_ok(cache))
 		return cache;
 
 	/* Impure cache is not refcounted, free it here */
-	ovl_dir_cache_free(d_inode(dentry));
 	ovl_set_dir_cache(d_inode(dentry), NULL);
+	ovl_dir_cache_free(cache);
 
 	cache = kzalloc(sizeof(struct ovl_dir_cache), GFP_KERNEL);
 	if (!cache)
@@ -613,8 +629,7 @@ static struct ovl_dir_cache *ovl_cache_get_impure(struct path *path)
 
 	res = ovl_dir_read_impure(path, &cache->entries, &cache->root);
 	if (res) {
-		ovl_cache_free(&cache->entries);
-		kfree(cache);
+		ovl_dir_cache_free(cache);
 		return ERR_PTR(res);
 	}
 	if (list_empty(&cache->entries)) {
@@ -632,6 +647,7 @@ static struct ovl_dir_cache *ovl_cache_get_impure(struct path *path)
 		return NULL;
 	}
 
+	cache->creds = ovl_cache_track_creds(dentry);
 	cache->version = ovl_dentry_version_get(dentry);
 	ovl_set_dir_cache(d_inode(dentry), cache);
 

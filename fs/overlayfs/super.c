@@ -212,7 +212,7 @@ static void ovl_destroy_inode(struct inode *inode)
 	dput(oi->__upperdentry);
 	iput(oi->lower);
 	if (S_ISDIR(inode->i_mode))
-		ovl_dir_cache_free(inode);
+		ovl_dir_cache_free(ovl_dir_cache(inode));
 	else
 		iput(oi->lowerdata);
 }
