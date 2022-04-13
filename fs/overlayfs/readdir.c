@@ -235,10 +235,8 @@ void ovl_dir_cache_free(struct inode *inode)
 	}
 }
 
-static void ovl_cache_put(struct ovl_dir_file *od, struct dentry *dentry)
+static void ovl_cache_put(struct ovl_dir_cache *cache, struct dentry *dentry)
 {
-	struct ovl_dir_cache *cache = od->cache;
-
 	WARN_ON(cache->refcount <= 0);
 	cache->refcount--;
 	if (!cache->refcount) {
@@ -327,7 +325,7 @@ static void ovl_dir_reset(struct file *file)
 	bool is_real;
 
 	if (cache && ovl_dentry_version_get(dentry) != cache->version) {
-		ovl_cache_put(od, dentry);
+		ovl_cache_put(cache, dentry);
 		od->cache = NULL;
 		od->cursor = NULL;
 	}
@@ -396,12 +394,14 @@ static struct ovl_dir_cache *ovl_cache_get(struct dentry *dentry)
 	struct ovl_dir_cache *cache;
 
 	cache = ovl_dir_cache(d_inode(dentry));
-	if (cache && ovl_dentry_version_get(dentry) == cache->version) {
-		WARN_ON(!cache->refcount);
-		cache->refcount++;
-		return cache;
+	if (cache) {
+		if (ovl_dentry_version_get(dentry) == cache->version) {
+			WARN_ON(!cache->refcount);
+			cache->refcount++;
+			return cache;
+		}
+		ovl_cache_put(cache, dentry);
 	}
-	ovl_set_dir_cache(d_inode(dentry), NULL);
 
 	cache = kzalloc(sizeof(struct ovl_dir_cache), GFP_KERNEL);
 	if (!cache)
@@ -913,7 +913,7 @@ static int ovl_dir_release(struct inode *inode, struct file *file)
 
 	if (od->cache) {
 		inode_lock(inode);
-		ovl_cache_put(od, file->f_path.dentry);
+		ovl_cache_put(od->cache, file->f_path.dentry);
 		inode_unlock(inode);
 	}
 	fput(od->realfile);
