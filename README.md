@@ -2,7 +2,7 @@ Reworking the Linux Audit Subsystem
 =============================================================================
 https://github.com/pcmoore/misc-linux_kernel/tree/working-audit_rework_v1
 
-*LAST UPDATED: December 6, 2021*
+*LAST UPDATED: April 25, 2022*
 
 I often joke that the Linux Kernel's Audit Subsystem is a bad design,
 implemented poorly; while this is definitely an extreme take on the audit
@@ -15,6 +15,10 @@ regularly as development progresses.  It is not intended to be the primary,
 long term source of information on the audit rework but it may be the best
 starting point for information while the audit rework patches remain
 out-of-tree.
+
+Related documents with more information are linked below:
+
+* [Design Document](https://github.com/pcmoore/misc-linux_kernel/blob/working-audit_rework_v1/README.design.md)
 
 ## Problems
 
