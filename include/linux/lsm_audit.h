@@ -41,6 +41,9 @@ struct lsm_network_audit {
 		} v6;
 	} fam;
 };
+/* clang-format off */
+#define LSM_NETWORK_AUDIT_INIT { .netif = 0 }
+/* clang-format on */
 
 struct lsm_ioctlop_audit {
 	struct path path;
@@ -60,24 +63,24 @@ struct lsm_ibendport_audit {
 /* Auxiliary data to use in generating the audit record. */
 struct common_audit_data {
 	char type;
-#define LSM_AUDIT_DATA_PATH	1
-#define LSM_AUDIT_DATA_NET	2
-#define LSM_AUDIT_DATA_CAP	3
-#define LSM_AUDIT_DATA_IPC	4
-#define LSM_AUDIT_DATA_TASK	5
-#define LSM_AUDIT_DATA_KEY	6
-#define LSM_AUDIT_DATA_NONE	7
-#define LSM_AUDIT_DATA_KMOD	8
-#define LSM_AUDIT_DATA_INODE	9
-#define LSM_AUDIT_DATA_DENTRY	10
-#define LSM_AUDIT_DATA_IOCTL_OP	11
-#define LSM_AUDIT_DATA_FILE	12
-#define LSM_AUDIT_DATA_IBPKEY	13
-#define LSM_AUDIT_DATA_IBENDPORT 14
-#define LSM_AUDIT_DATA_LOCKDOWN 15
+#define LSM_AUDIT_DATA_PATH	    1
+#define LSM_AUDIT_DATA_NET	    2
+#define LSM_AUDIT_DATA_CAP	    3
+#define LSM_AUDIT_DATA_IPC	    4
+#define LSM_AUDIT_DATA_TASK	    5
+#define LSM_AUDIT_DATA_KEY	    6
+#define LSM_AUDIT_DATA_NONE	    7
+#define LSM_AUDIT_DATA_KMOD	    8
+#define LSM_AUDIT_DATA_INODE	    9
+#define LSM_AUDIT_DATA_DENTRY	    10
+#define LSM_AUDIT_DATA_IOCTL_OP	    11
+#define LSM_AUDIT_DATA_FILE	    12
+#define LSM_AUDIT_DATA_IBPKEY	    13
+#define LSM_AUDIT_DATA_IBENDPORT    14
+#define LSM_AUDIT_DATA_LOCKDOWN	    15
 #define LSM_AUDIT_DATA_NOTIFICATION 16
-#define LSM_AUDIT_DATA_ANONINODE	17
-	union 	{
+#define LSM_AUDIT_DATA_ANONINODE    17
+	union {
 		struct path path;
 		struct dentry *dentry;
 		struct inode *inode;
@@ -116,14 +119,14 @@ struct common_audit_data {
 #define v4info fam.v4
 #define v6info fam.v6
 
-int ipv4_skb_to_auditdata(struct sk_buff *skb,
-		struct common_audit_data *ad, u8 *proto);
+int ipv4_skb_to_auditdata(struct sk_buff *skb, struct common_audit_data *ad,
+			  u8 *proto);
 
-int ipv6_skb_to_auditdata(struct sk_buff *skb,
-		struct common_audit_data *ad, u8 *proto);
+int ipv6_skb_to_auditdata(struct sk_buff *skb, struct common_audit_data *ad,
+			  u8 *proto);
 
 void common_lsm_audit(struct common_audit_data *a,
-	void (*pre_audit)(struct audit_buffer *, void *),
-	void (*post_audit)(struct audit_buffer *, void *));
+		      void (*pre_audit)(struct audit_buffer *, void *),
+		      void (*post_audit)(struct audit_buffer *, void *));
 
 #endif
