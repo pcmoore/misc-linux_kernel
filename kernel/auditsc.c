@@ -987,6 +987,7 @@ static void audit_reset_context(struct audit_context *ctx)
 	 *       - we don't reset "dummy"
 	 *       - we don't reset "state", we do reset "current_state"
 	 *       - we preserve "filterkey" if "state" is AUDIT_STATE_RECORD
+	 *       - we keep the "sockaddr" memory, free in audit_free_context()
 	 *       - much of this is likely overkill, but play it safe for now
 	 *       - we really need to work on improving the audit_context struct
 	 */
@@ -1006,8 +1007,8 @@ static void audit_reset_context(struct audit_context *ctx)
 		ctx->filterkey = NULL;
 	}
 	audit_free_aux(ctx);
-	kfree(ctx->sockaddr);
-	ctx->sockaddr = NULL;
+	if (ctx->sockaddr_len > 0)
+		memset(ctx->sockaddr, 0, sizeof(*ctx->sockaddr));
 	ctx->sockaddr_len = 0;
 	ctx->ppid = 0;
 	ctx->uid = ctx->euid = ctx->suid = ctx->fsuid = KUIDT_INIT(0);
@@ -1097,6 +1098,7 @@ static inline void audit_free_context(struct audit_context *context)
 	audit_reset_context(context);
 	audit_proctitle_free(context);
 	free_tree_refs(context);
+	kfree(context->sockaddr);
 	kfree(context->filterkey);
 	kfree(context);
 }
