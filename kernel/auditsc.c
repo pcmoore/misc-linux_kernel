@@ -1026,6 +1026,16 @@ static void audit_reset_context(struct audit_context *ctx)
 	ctx->type = 0; /* reset last for audit_free_*() */
 }
 
+/**
+ * audit_alloc_context - allocate an audit_context
+ * @state: the initial AUDIT_STATE_XXX
+ *
+ * Allocate and initialize an audit_context struct for a newly created task.
+ * The new audit_context isn't overly useful at this point (it is marked as
+ * a "dummy" context), it isn't until the audit_context is processed by
+ * __audit_syscall_entry(), __audit_uring_entry(), or similar that it can be
+ * used to start tracking task state for the audit subsystem.
+ */
 static inline struct audit_context *audit_alloc_context(enum audit_state state)
 {
 	struct audit_context *context;
@@ -1033,6 +1043,7 @@ static inline struct audit_context *audit_alloc_context(enum audit_state state)
 	context = kzalloc(sizeof(*context), GFP_KERNEL);
 	if (!context)
 		return NULL;
+	context->dummy = 1;
 	context->context = AUDIT_CTX_UNUSED;
 	context->state = state;
 	context->prio = state == AUDIT_STATE_RECORD ? ~0ULL : 0;
