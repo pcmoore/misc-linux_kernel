@@ -959,6 +959,17 @@ static inline void audit_free_aux(struct audit_context *context)
 }
 
 /**
+ * audit_reset_sockaddr - reset the audit_context's sockaddr information
+ * @ctx: the audit context
+ */
+static void audit_reset_sockaddr(struct audit_context *ctx)
+{
+	if (ctx->sockaddr_len > 0)
+		memset(ctx->sockaddr, 0, sizeof(*ctx->sockaddr));
+	ctx->sockaddr_len = 0;
+}
+
+/**
  * audit_reset_context - reset a audit_context structure
  * @ctx: the audit_context to reset
  *
@@ -1007,9 +1018,7 @@ static void audit_reset_context(struct audit_context *ctx)
 		ctx->filterkey = NULL;
 	}
 	audit_free_aux(ctx);
-	if (ctx->sockaddr_len > 0)
-		memset(ctx->sockaddr, 0, sizeof(*ctx->sockaddr));
-	ctx->sockaddr_len = 0;
+	audit_reset_sockaddr(ctx);
 	ctx->ppid = 0;
 	ctx->uid = ctx->euid = ctx->suid = ctx->fsuid = KUIDT_INIT(0);
 	ctx->gid = ctx->egid = ctx->sgid = ctx->fsgid = KGIDT_INIT(0);
@@ -1914,6 +1923,11 @@ static void audit_return_fixup(struct audit_context *ctx,
 void __audit_uring_entry(u8 op)
 {
 	struct audit_context *ctx = audit_context();
+
+	/* io_uring in some cases will record the sockaddr prior to calling
+	 * into us, but in those cases it will call back into audit_sockaddr()
+	 * later, so simply reset the stored sockaddr and continue. */
+	audit_reset_sockaddr(ctx);
 
 	if (ctx->state == AUDIT_STATE_DISABLED)
 		return;

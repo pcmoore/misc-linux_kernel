@@ -5,6 +5,7 @@
 #include <linux/slab.h>
 #include <linux/net.h>
 #include <linux/compat.h>
+#include <linux/audit.h>
 #include <net/compat.h>
 #include <linux/io_uring.h>
 
@@ -1514,6 +1515,9 @@ int io_connect(struct io_kiocb *req, unsigned int issue_flags)
 
 	if (req_has_async_data(req)) {
 		io = req->async_data;
+		ret = audit_sockaddr(connect->addr_len, &io->address);
+		if (ret)
+			goto out;
 	} else {
 		ret = move_addr_to_kernel(connect->addr,
 						connect->addr_len,
